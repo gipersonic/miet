@@ -5,13 +5,39 @@ import logging
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
-                           InlineKeyboardMarkup, InlineKeyboardButton)
+from aiogram.types import (
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardRemove,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
 # -------------------------
 # Настройка логирования
 # -------------------------
 logging.basicConfig(level=logging.INFO)
+
+# -------------------------
+# Загрузка конфигурации из config.json
+# -------------------------
+def load_config():
+    with open("config.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+config = load_config()
+API_TOKEN = config["bot_token"]
+ADMIN_CHAT_ID = config.get("admin_chat_id")
+
+# -------------------------
+# Функция уведомления в админ-чат
+# -------------------------
+async def notify_admin(message_text: str):
+    if ADMIN_CHAT_ID:
+        try:
+            await bot.send_message(chat_id=ADMIN_CHAT_ID, text=message_text)
+        except Exception as e:
+            logging.error(f"Ошибка при отправке уведомления в админ-чат: {e}")
 
 # -------------------------
 # Регистрация пользователей
@@ -40,7 +66,7 @@ def is_registered(user_id):
     return str(user_id) in users
 
 # -------------------------
-# Отслеживание общего прогресса обучения (если требуется)
+# Отслеживание прогресса
 # -------------------------
 PROGRESS_FILE = "progress.json"
 
@@ -88,9 +114,6 @@ def load_tests():
     return {}
 
 def load_subject(subject):
-    """
-    Для листового узла в новой структуре возвращается просто текст.
-    """
     subject = subject.strip().lower()
     path = f"subjects/{subject}.json"
     if os.path.exists(path):
@@ -110,11 +133,6 @@ def build_keyboard(options):
     return kb
 
 def get_node(path):
-    """
-    Проходит по иерархии по заданному пути (список ключей).
-    Если значение узла – строка, пытается загрузить файл subjects/{value}.json.
-    Если файл не найден, возвращает строку как листовой узел.
-    """
     node = load_subjects()
     for key in path:
         if isinstance(node, dict) and key in node:
@@ -134,6 +152,15 @@ def get_node(path):
     return node
 
 # -------------------------
+# Функция формирования основного меню
+# -------------------------
+def get_main_menu_keyboard():
+    kb = ReplyKeyboardMarkup(keyboard=[], resize_keyboard=True)
+    kb.keyboard.append([KeyboardButton(text="Главное меню")])
+    kb.keyboard.append([KeyboardButton(text="Оставить отзыв"), KeyboardButton(text="Связаться с админом")])
+    return kb
+
+# -------------------------
 # Глобальное состояние навигации
 # -------------------------
 user_nav_state = {}
@@ -141,20 +168,11 @@ user_nav_state = {}
 # -------------------------
 # Глобальное состояние тестирования
 # -------------------------
-# Теперь для каждого пользователя и предмета хранится словарь с текущим индексом и количеством правильных ответов.
-# Формат: { user_id: { full_subject: {"current_index": int, "correct": int} } }
 user_test_states = {}
 
 # -------------------------
 # Инициализация бота и обработчики
 # -------------------------
-def load_config():
-    with open("config.json", "r", encoding="utf-8") as f:
-        return json.load(f)
-
-config = load_config()
-API_TOKEN = config["bot_token"]  # Теперь токен берётся из файла
-
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
@@ -167,6 +185,9 @@ async def start_handler(message: types.Message):
     top_options = list(load_subjects().keys())
     kb = build_keyboard(top_options)
     await message.answer("Привет! Выберите категорию:", reply_markup=kb)
+    # Дополнительное меню
+    await message.answer("Меню:", reply_markup=get_main_menu_keyboard())
+    await notify_admin(f"Пользователь {username} (ID: {uid}) запустил бота.")
 
 @dp.message()
 async def text_handler(message: types.Message):
@@ -176,6 +197,19 @@ async def text_handler(message: types.Message):
         return
 
     text = message.text.strip()
+    if text.lower() == "главное меню":
+        # Сброс навигации и вывод верхнего меню
+        user_nav_state[uid] = []
+        top_options = list(load_subjects().keys())
+        await message.answer("Главное меню. Выберите категорию:", reply_markup=build_keyboard(top_options))
+        return
+
+    if text.lower() in {"оставить отзыв", "связаться с админом"}:
+        # Обработка кнопок основного меню (если пользователь нажал эти кнопки как текст)
+        await message.answer("Пожалуйста, воспользуйтесь кнопками в меню для этого действия.",
+                             reply_markup=get_main_menu_keyboard())
+        return
+
     if uid not in user_nav_state:
         user_nav_state[uid] = []
     current_path = user_nav_state[uid]
@@ -187,16 +221,16 @@ async def text_handler(message: types.Message):
         node = get_node(current_path) if current_path else load_subjects()
         if isinstance(node, dict):
             options = list(node.keys())
-            kb = build_keyboard(options)
-            prompt = "Выберите подраздел:" if current_path else "Выберите категорию:"
-            await message.answer(prompt, reply_markup=kb)
+            await message.answer("Выберите подраздел:" if current_path else "Выберите категорию:",
+                                 reply_markup=build_keyboard(options))
         else:
             await message.answer("Нет доступных подразделов.", reply_markup=ReplyKeyboardRemove())
         return
 
     node = get_node(current_path) if current_path else load_subjects()
     if not (isinstance(node, dict) and text in node):
-        await message.answer("Пожалуйста, выберите один из предложенных вариантов.")
+        await message.answer("Пожалуйста, выберите один из предложенных вариантов.",
+                             reply_markup=get_main_menu_keyboard())
         return
 
     current_path.append(text)
@@ -204,105 +238,35 @@ async def text_handler(message: types.Message):
     new_node = get_node(current_path)
     if isinstance(new_node, dict) and new_node:
         options = list(new_node.keys())
-        kb = build_keyboard(options)
-        prompt = f"Выберите подраздел для {'/'.join(current_path)}:"
-        await message.answer(prompt, reply_markup=kb)
+        await message.answer(f"Выберите подраздел для {'/'.join(current_path)}:",
+                             reply_markup=build_keyboard(options))
     else:
         full_subject = "/".join(current_path)
         content = new_node if new_node is not None else "Описание отсутствует."
-        # При достижении листового узла можно, например, отметить, что пользователь ознакомился с темой
         mark_subject_completed(uid, full_subject)
-        await message.answer(f"Вы выбрали: {full_subject}\n\n{content}", reply_markup=ReplyKeyboardRemove())
+        await message.answer(f"Вы выбрали: {full_subject}\n\n{content}",
+                             reply_markup=ReplyKeyboardRemove())
+        await notify_admin(f"Пользователь {message.from_user.username} (ID: {uid}) выбрал тему: {full_subject}")
+        # После выбора темы можно вернуть главное меню
+        await message.answer("Меню:", reply_markup=get_main_menu_keyboard())
 
-@dp.callback_query(lambda c: c.data.startswith("test_"))
-async def start_test(callback: types.CallbackQuery):
-    # Здесь предполагается, что тест запускается для выбранного предмета
-    subject_key = callback.data.split("_", 1)[1]
-    tests = load_tests()
-    if subject_key not in tests:
-        await callback.message.answer("Тест не найден.")
-        return
+@dp.callback_query(lambda c: c.data.startswith("feedback"))
+async def feedback_handler(callback: types.CallbackQuery):
     uid = str(callback.from_user.id)
-    questions = tests[subject_key]
-    if not questions:
-        await callback.message.answer("Для этого предмета пока нет тестов.")
-        return
-    if uid not in user_test_states:
-        user_test_states[uid] = {}
-    # Инициализируем тест для предмета
-    user_test_states[uid][subject_key] = {"current_index": 0, "correct": 0}
-    current_index = 0
-    question = questions[current_index]
-    options = question.get("options", [])
-    options_buttons = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=opt, callback_data=f"ans_{subject_key}_{i}")]
-        for i, opt in enumerate(options)
-    ])
-    await callback.message.answer(f"📌 Вопрос: {question['question']}\nВарианты ответов: {', '.join(options)}",
-                                  reply_markup=options_buttons)
+    username = callback.from_user.username or "Неизвестный"
+    await notify_admin(f"Пользователь {username} (ID: {uid}) хочет оставить отзыв. Свяжитесь с ним, пожалуйста.")
+    await callback.message.answer("Спасибо! Ваш отзыв будет передан администратору. Пожалуйста, напишите свой отзыв в ответном сообщении.")
 
-@dp.callback_query(lambda c: c.data.startswith("ans_"))
-async def answer_handler(callback: types.CallbackQuery):
-    data_parts = callback.data.split("_")
-    if len(data_parts) < 3:
-        await callback.answer("Неверные данные ответа.", show_alert=True)
-        return
-
-    subject_key = data_parts[1]
-    try:
-        option_index = int(data_parts[2])
-    except ValueError:
-        await callback.answer("Неверный формат ответа.", show_alert=True)
-        return
-
-    tests = load_tests()
-    if subject_key not in tests:
-        await callback.message.answer("Тест не найден.")
-        return
+@dp.callback_query(lambda c: c.data.startswith("contact_admin"))
+async def contact_admin_handler(callback: types.CallbackQuery):
     uid = str(callback.from_user.id)
-    questions = tests[subject_key]
-    test_state = user_test_states.get(uid, {}).get(subject_key)
-    if not test_state:
-        await callback.message.answer("Тест не запущен.")
-        return
+    username = callback.from_user.username or "Неизвестный"
+    await notify_admin(f"Пользователь {username} (ID: {uid}) хочет связаться с администратором.")
+    await callback.message.answer("Сообщение отправлено администратору. Ожидайте обратной связи.")
 
-    current_index = test_state["current_index"]
-    if current_index >= len(questions):
-        await callback.message.answer("Тест уже завершён.")
-        return
-
-    current_question = questions[current_index]
-    correct_answer = current_question.get("answer")
-    options = current_question.get("options", [])
-    if option_index < 0 or option_index >= len(options):
-        await callback.answer("Неверный номер варианта.", show_alert=True)
-        return
-
-    selected_option = options[option_index]
-    if selected_option == correct_answer:
-        test_state["correct"] += 1
-        response = "✅ Правильно!"
-    else:
-        response = f"❌ Неверно! Правильный ответ: {correct_answer}"
-    await callback.message.answer(response)
-
-    # Переходим к следующему вопросу
-    test_state["current_index"] += 1
-    current_index = test_state["current_index"]
-    if current_index < len(questions):
-        next_question = questions[current_index]
-        options = next_question.get("options", [])
-        options_buttons = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=opt, callback_data=f"ans_{subject_key}_{i}")]
-            for i, opt in enumerate(options)
-        ])
-        await callback.message.answer(f"📌 Вопрос: {next_question['question']}\nВарианты ответов: {', '.join(options)}",
-                                      reply_markup=options_buttons)
-    else:
-        total = len(questions)
-        correct = test_state["correct"]
-        await callback.message.answer(f"🎉 Тест завершён! Вы ответили правильно на {correct} из {total} вопросов.")
-        user_test_states[uid].pop(subject_key, None)
 
 if __name__ == "__main__":
+    async def on_startup(*args, **kwargs):
+        await notify_admin("Бот запущен и работает без ошибок.")
+    dp.startup.register(on_startup)
     asyncio.run(dp.start_polling(bot))
