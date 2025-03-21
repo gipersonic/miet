@@ -40,7 +40,7 @@ def is_registered(user_id):
     return str(user_id) in users
 
 # -------------------------
-# Отслеживание прогресса (если требуется)
+# Отслеживание общего прогресса обучения (если требуется)
 # -------------------------
 PROGRESS_FILE = "progress.json"
 
@@ -89,8 +89,7 @@ def load_tests():
 
 def load_subject(subject):
     """
-    Для листового узла, когда мы хотим просто вывести текст,
-    текст уже хранится непосредственно в файле, поэтому возвращаем его.
+    Для листового узла в новой структуре возвращается просто текст.
     """
     subject = subject.strip().lower()
     path = f"subjects/{subject}.json"
@@ -114,7 +113,7 @@ def get_node(path):
     """
     Проходит по иерархии по заданному пути (список ключей).
     Если значение узла – строка, пытается загрузить файл subjects/{value}.json.
-    Если файл не найден, считается, что узел является листовым, и возвращается строка.
+    Если файл не найден, возвращает строку как листовой узел.
     """
     node = load_subjects()
     for key in path:
@@ -129,7 +128,6 @@ def get_node(path):
                         logging.error(f"Ошибка чтения {file_path}: {e}")
                         return None
                 else:
-                    # Если файл не найден, возвращаем строку как листовой узел.
                     return node
         else:
             return None
@@ -141,14 +139,22 @@ def get_node(path):
 user_nav_state = {}
 
 # -------------------------
-# Глобальное состояние тестирования (если требуется)
+# Глобальное состояние тестирования
 # -------------------------
+# Теперь для каждого пользователя и предмета хранится словарь с текущим индексом и количеством правильных ответов.
+# Формат: { user_id: { full_subject: {"current_index": int, "correct": int} } }
 user_test_states = {}
 
 # -------------------------
 # Инициализация бота и обработчики
 # -------------------------
-API_TOKEN = "7270273640:AAGeDt7CW0O9PTNzfcT1VE3S8mWa_ebEqCI"  # Замените на ваш токен
+def load_config():
+    with open("config.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+config = load_config()
+API_TOKEN = config["bot_token"]  # Теперь токен берётся из файла
+
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
@@ -203,9 +209,100 @@ async def text_handler(message: types.Message):
         await message.answer(prompt, reply_markup=kb)
     else:
         full_subject = "/".join(current_path)
-        # Если new_node является None, заменяем на сообщение о том, что описание отсутствует
         content = new_node if new_node is not None else "Описание отсутствует."
+        # При достижении листового узла можно, например, отметить, что пользователь ознакомился с темой
+        mark_subject_completed(uid, full_subject)
         await message.answer(f"Вы выбрали: {full_subject}\n\n{content}", reply_markup=ReplyKeyboardRemove())
+
+@dp.callback_query(lambda c: c.data.startswith("test_"))
+async def start_test(callback: types.CallbackQuery):
+    # Здесь предполагается, что тест запускается для выбранного предмета
+    subject_key = callback.data.split("_", 1)[1]
+    tests = load_tests()
+    if subject_key not in tests:
+        await callback.message.answer("Тест не найден.")
+        return
+    uid = str(callback.from_user.id)
+    questions = tests[subject_key]
+    if not questions:
+        await callback.message.answer("Для этого предмета пока нет тестов.")
+        return
+    if uid not in user_test_states:
+        user_test_states[uid] = {}
+    # Инициализируем тест для предмета
+    user_test_states[uid][subject_key] = {"current_index": 0, "correct": 0}
+    current_index = 0
+    question = questions[current_index]
+    options = question.get("options", [])
+    options_buttons = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=opt, callback_data=f"ans_{subject_key}_{i}")]
+        for i, opt in enumerate(options)
+    ])
+    await callback.message.answer(f"📌 Вопрос: {question['question']}\nВарианты ответов: {', '.join(options)}",
+                                  reply_markup=options_buttons)
+
+@dp.callback_query(lambda c: c.data.startswith("ans_"))
+async def answer_handler(callback: types.CallbackQuery):
+    data_parts = callback.data.split("_")
+    if len(data_parts) < 3:
+        await callback.answer("Неверные данные ответа.", show_alert=True)
+        return
+
+    subject_key = data_parts[1]
+    try:
+        option_index = int(data_parts[2])
+    except ValueError:
+        await callback.answer("Неверный формат ответа.", show_alert=True)
+        return
+
+    tests = load_tests()
+    if subject_key not in tests:
+        await callback.message.answer("Тест не найден.")
+        return
+    uid = str(callback.from_user.id)
+    questions = tests[subject_key]
+    test_state = user_test_states.get(uid, {}).get(subject_key)
+    if not test_state:
+        await callback.message.answer("Тест не запущен.")
+        return
+
+    current_index = test_state["current_index"]
+    if current_index >= len(questions):
+        await callback.message.answer("Тест уже завершён.")
+        return
+
+    current_question = questions[current_index]
+    correct_answer = current_question.get("answer")
+    options = current_question.get("options", [])
+    if option_index < 0 or option_index >= len(options):
+        await callback.answer("Неверный номер варианта.", show_alert=True)
+        return
+
+    selected_option = options[option_index]
+    if selected_option == correct_answer:
+        test_state["correct"] += 1
+        response = "✅ Правильно!"
+    else:
+        response = f"❌ Неверно! Правильный ответ: {correct_answer}"
+    await callback.message.answer(response)
+
+    # Переходим к следующему вопросу
+    test_state["current_index"] += 1
+    current_index = test_state["current_index"]
+    if current_index < len(questions):
+        next_question = questions[current_index]
+        options = next_question.get("options", [])
+        options_buttons = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=opt, callback_data=f"ans_{subject_key}_{i}")]
+            for i, opt in enumerate(options)
+        ])
+        await callback.message.answer(f"📌 Вопрос: {next_question['question']}\nВарианты ответов: {', '.join(options)}",
+                                      reply_markup=options_buttons)
+    else:
+        total = len(questions)
+        correct = test_state["correct"]
+        await callback.message.answer(f"🎉 Тест завершён! Вы ответили правильно на {correct} из {total} вопросов.")
+        user_test_states[uid].pop(subject_key, None)
 
 if __name__ == "__main__":
     asyncio.run(dp.start_polling(bot))
