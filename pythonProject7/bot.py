@@ -148,7 +148,7 @@ user_test_states = {}
 # -------------------------
 # Инициализация бота и обработчики
 # -------------------------
-API_TOKEN = "7270273640:AAHP_9Z2ut-hMfAT3D2qWO8CIeR9Gq6KvzI"  # Замените на ваш токен
+API_TOKEN = "7270273640:AAGeDt7CW0O9PTNzfcT1VE3S8mWa_ebEqCI"  # Замените на ваш токен
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
