@@ -1,0 +1,32 @@
+{
+  "Базы данных/Теория": {
+    "Основные понятия": [
+      "**База данных (БД)** — организованный набор структурированных данных.",
+      "**СУБД** (Система управления базами данных): MySQL, PostgreSQL, SQLite.",
+      "**Реляционные БД**: Данные хранятся в таблицах с связями (SQL).",
+      "**NoSQL**: Документные (MongoDB), ключ-значение (Redis), графовые (Neo4j)."
+    ],
+    "SQL": {
+      "Команды": [
+        "**SELECT**: `SELECT name, age FROM users WHERE age > 18;`",
+        "**INSERT**: `INSERT INTO users (name, age) VALUES ('Alice', 25);`",
+        "**UPDATE**: `UPDATE users SET age = 26 WHERE name = 'Alice';`",
+        "**DELETE**: `DELETE FROM users WHERE id = 5;`"
+      ],
+      "JOIN-ы": [
+        "**INNER JOIN**: Выборка общих данных из двух таблиц.",
+        "**LEFT JOIN**: Все записи из левой таблицы + совпадения из правой.",
+        "Пример:\n```sql\nSELECT orders.id, users.name\nFROM orders\nLEFT JOIN users ON orders.user_id = users.id;```"
+      ]
+    },
+    "Нормализация": [
+      "**1НФ**: Каждая ячейка содержит атомарное значение.",
+      "**2НФ**: Выполнена 1НФ + нет частичных зависимостей от первичного ключа.",
+      "**3НФ**: Выполнена 2НФ + нет транзитивных зависимостей."
+    ],
+    "Примеры": [
+      "**Создание таблицы**:\n```sql\nCREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(50),\n  age INT\n);```",
+      "**Индексы**: `CREATE INDEX idx_name ON users (name);` (ускоряет поиск)."
+    ]
+  }
+}

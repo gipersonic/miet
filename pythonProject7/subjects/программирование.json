@@ -1,0 +1,30 @@
+{
+  "Информатика/Программирование/Python/Теория": {
+    "Основы синтаксиса": [
+      "**Переменные**: `x = 5`, `name = 'Alice'`",
+      "**Типы данных**: int, float, str, bool, list, dict",
+      "**Условные операторы**:\n```python\nif x > 0:\n    print('Positive')\nelif x == 0:\n    print('Zero')\nelse:\n    print('Negative')```",
+      "**Циклы**:\n- for: `for i in range(5):`\n- while: `while x < 10:`"
+    ],
+    "Функции": [
+      "**Определение**:\n```python\ndef greet(name):\n    return f'Hello, {name}!'```",
+      "**Аргументы**: позиционные, ключевые, *args, **kwargs",
+      "**Лямбда-функции**: `square = lambda x: x**2`"
+    ],
+    "Структуры данных": [
+      "**Списки**: `nums = [1, 2, 3]`, методы: append(), pop()",
+      "**Словари**: `user = {'name': 'Bob', 'age': 30}`",
+      "**Множества**: `unique_nums = {1, 2, 3}`",
+      "**Кортежи**: `coordinates = (10, 20)`"
+    ],
+    "ООП": [
+      "**Классы**:\n```python\nclass Dog:\n    def __init__(self, name):\n        self.name = name\n    def bark(self):\n        print('Woof!')```",
+      "**Наследование**: `class Puppy(Dog): ...`",
+      "**Инкапсуляция**, **Полиморфизм**"
+    ],
+    "Работа с файлами": [
+      "**Чтение**:\n```python\nwith open('file.txt', 'r') as f:\n    content = f.read()```",
+      "**Запись**:\n```python\nwith open('file.txt', 'w') as f:\n    f.write('Hello World')```"
+    ]
+  }
+}
