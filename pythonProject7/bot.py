@@ -78,9 +78,14 @@ def load_tests():
 PROGRESS_FILE = "progress.json"
 
 def load_progress():
-    if os.path.exists(PROGRESS_FILE):
-        with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+    if os.path.exists("progress.json"):
+        try:
+            with open("progress.json", "r", encoding="utf-8") as f:
+                data = f.read().strip()
+                return json.loads(data) if data else {}
+        except json.JSONDecodeError:
+            logging.error("Ошибка загрузки progress.json. Файл повреждён.")
+            return {}
     return {}
 
 def save_progress(progress):
