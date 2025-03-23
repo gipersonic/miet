@@ -300,7 +300,7 @@ async def text_handler(message: types.Message):
             await message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
         return
 
-    await message.answer("Пожалуйста, выберите один из предложенных вариантов.", reply_markup=get_main_menu_keyboard())
+    await message.answer("Пожалуйста, выберите1 один из предложенных вариантов.", reply_markup=get_main_menu_keyboard())
 
 # ------------------------------
 # Обработчик callback-запросов от inline кнопок (для ответа админа)
