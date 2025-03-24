@@ -35,6 +35,7 @@ contact_pending = {}      # {user_id: bool}
 admin_reply_pending = {}  # {admin_id: target_user_id}
 user_test_states = {}     # {user_id: {"questions":..., "current_index":..., "score":...}}
 
+# Создание бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
@@ -56,62 +57,51 @@ def load_tests():
 
 def get_node(path):
     """
-    Проходит по структуре, загружая данные из subjects.json.
-    Для каждого ключа:
-      - Если значение является словарём – переходит к нему.
-      - Если значение – строка и не достигнут конец пути, пытается загрузить файл с этим именем
-        (сначала без расширения, затем с добавлением .json) из директории subjects.
-      - Если значение – строка на последнем уровне или файл не найден, возвращает конечное содержание в виде {"__content__": ...}.
+    Проходит по структуре subjects.json.
+    Если значение по ключу является строкой, пытается загрузить файл с этим именем
+    (сначала без расширения, затем с .json) из директории "subjects".
+    Если файл найден и его содержимое удаётся прочитать как JSON, возвращает его.
+    Если содержимое файла – список, объединяет его элементы в строку.
+    Если возникает ошибка декодирования, читает файл как обычный текст.
+    Если файл не найден, возвращает само значение как конечное описание.
     """
     subjects = load_subjects()
     node = subjects
-    for i, key in enumerate(path):
+    for key in path:
         if isinstance(node, dict) and key in node:
             node = node[key]
-            # Если значение строковое и мы ещё не дошли до конца пути, загрузим файл.
-            if isinstance(node, str) and i < len(path) - 1:
-                base_dir = "subjects"
-                file_path = os.path.join(base_dir, node)
-                if not os.path.exists(file_path):
-                    file_path_with_ext = file_path + ".json"
-                    if os.path.exists(file_path_with_ext):
-                        file_path = file_path_with_ext
-                    else:
-                        logging.warning(f"Файл не найден: {file_path} или {file_path_with_ext}")
-                        return {"__content__": node}
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        node = json.load(f)
-                except json.JSONDecodeError as e:
-                    logging.error(f"Ошибка декодирования JSON в {file_path}: {e}. Читаем как текст.")
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            text_data = f.read().strip()
-                        node = {"__content__": text_data}
-                    except Exception as e2:
-                        logging.error(f"Ошибка чтения файла как текста в {file_path}: {e2}")
-                        return {"__content__": node}
         else:
             return None
-
-    # Если итоговое значение – строка, попытаемся загрузить файл, если он существует
     if isinstance(node, str):
         base_dir = "subjects"
         file_path = os.path.join(base_dir, node)
-        if os.path.exists(file_path) or os.path.exists(file_path + ".json"):
-            if not os.path.exists(file_path):
-                file_path = file_path + ".json"
+        if not os.path.exists(file_path):
+            file_path_with_ext = file_path + ".json"
+            if os.path.exists(file_path_with_ext):
+                file_path = file_path_with_ext
+            else:
+                logging.warning(f"Файл не найден: {file_path} или {file_path_with_ext}")
+                return {"__content__": node}
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            elif isinstance(data, list):
+                return {"__content__": "\n".join(str(item) for item in data)}
+            else:
+                return {"__content__": data}
+        except json.JSONDecodeError as e:
+            logging.error(f"Ошибка декодирования JSON в {file_path}: {e}. Читаем как текст.")
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
-                    node = json.load(f)
-            except json.JSONDecodeError:
-                with open(file_path, "r", encoding="utf-8") as f:
                     text_data = f.read().strip()
-                node = {"__content__": text_data}
-        else:
-            node = {"__content__": node}
-    if isinstance(node, list):
-        node = {"__content__": "\n".join(str(x) for x in node)}
+                return {"__content__": text_data}
+            except Exception as e2:
+                logging.error(f"Ошибка чтения файла как текста в {file_path}: {e2}")
+                return {"__content__": node}
+    elif isinstance(node, list):
+        return {"__content__": "\n".join(str(item) for item in node)}
     return node
 
 def build_keyboard(options, include_back=False):
@@ -155,7 +145,7 @@ async def text_handler(message: types.Message):
     lower_text = text.lower()
     logging.info(f"Сообщение от {uid}: {text}")
 
-    # Если введённая команда не является системной, и пользователь уже на конечном уровне, повторяем содержание
+    # Если введённая команда не системная и пользователь уже на конечном уровне, повторяем содержание.
     system_commands = {"назад", "главное меню", "оставить отзыв", "связаться с админом", "тест"}
     current_path = user_nav_state.get(uid, [])
     node = get_node(current_path) if current_path else None
