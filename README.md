@@ -14,3 +14,5 @@ it should contain:
 "bot_token": "YOUR_BOT_TOKEN",
 "admin_chat_id": "CHAT_ID"
 }
+
+ссылка на работущего бота: @study_assistant_MIET_bot
