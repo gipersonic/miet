@@ -56,15 +56,6 @@ def load_tests():
         return {}
 
 def get_node(path):
-    """
-    Проходит по структуре subjects.json.
-    Если значение по ключу является строкой, пытается загрузить файл с этим именем
-    (сначала без расширения, затем с .json) из директории "subjects".
-    Если файл найден и его содержимое удаётся прочитать как JSON, возвращает его.
-    Если содержимое файла – список, объединяет его элементы в строку.
-    Если возникает ошибка декодирования, читает файл как обычный текст.
-    Если файл не найден, возвращает само значение как конечное описание.
-    """
     subjects = load_subjects()
     node = subjects
     for key in path:
@@ -75,8 +66,10 @@ def get_node(path):
     if isinstance(node, str):
         base_dir = "subjects"
         file_path = os.path.join(base_dir, node)
+        logging.info(f"Попытка загрузить файл: {file_path}")
         if not os.path.exists(file_path):
             file_path_with_ext = file_path + ".json"
+            logging.info(f"Файл {file_path} не найден, пробую {file_path_with_ext}")
             if os.path.exists(file_path_with_ext):
                 file_path = file_path_with_ext
             else:
@@ -92,7 +85,7 @@ def get_node(path):
             else:
                 return {"__content__": data}
         except json.JSONDecodeError as e:
-            logging.error(f"Ошибка декодирования JSON в {file_path}: {e}. Читаем как текст.")
+            logging.error(f"Ошибка декодирования JSON в {file_path}: {e}. Попытка прочитать как текст.")
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     text_data = f.read().strip()
